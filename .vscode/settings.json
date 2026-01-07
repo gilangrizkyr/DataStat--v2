@@ -1,0 +1,9 @@
+{
+    "json.schemas": [
+        {
+            "fileMatch": ["composer.json"],
+            "url": ""
+        }
+    ]
+}
+
