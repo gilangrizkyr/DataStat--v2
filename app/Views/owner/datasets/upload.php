@@ -1,5 +1,4 @@
 <?= $this->extend('layouts/owner') ?>
-
 <?= $this->section('content') ?>
 
 <div class="row justify-content-center">
@@ -10,7 +9,7 @@
             <h2><i class="fas fa-cloud-upload-alt me-2"></i>Upload Dataset</h2>
             <p class="text-muted">Upload file CSV atau Excel untuk membuat dataset baru</p>
         </div>
-
+        
         <div class="card border-0 shadow">
             <div class="card-body p-4">
 
@@ -51,6 +50,33 @@
                             <button type="button" class="btn btn-sm btn-danger" onclick="clearFile()">
                                 <i class="fas fa-times"></i>
                             </button>
+                        </div>
+                    </div>
+
+                    <!-- Excel Preview Section -->
+                    <div class="alert alert-info d-none" id="excelPreview">
+                        <div class="d-flex align-items-center mb-3">
+                            <i class="fas fa-table fa-2x me-3"></i>
+                            <div>
+                                <h6 class="mb-1">Informasi File Excel</h6>
+                                <small class="text-muted">File ini memiliki <strong id="sheetCount">0</strong> sheet dengan total <strong id="totalRows">0</strong> baris data</small>
+                            </div>
+                        </div>
+                        
+                        <!-- Sheet Names -->
+                        <div class="mb-3">
+                            <label class="form-label small fw-bold">Sheet yang akan dibaca:</label>
+                            <div id="sheetList" class="d-flex flex-wrap gap-2">
+                                <!-- Sheet badges will be inserted here -->
+                            </div>
+                        </div>
+                        
+                        <!-- Headers Preview -->
+                        <div>
+                            <label class="form-label small fw-bold">Kolom yang akan dibaca (dari sheet pertama):</label>
+                            <div class="bg-white rounded p-2 border" style="max-height: 150px; overflow-y: auto;">
+                                <code id="headersPreview" class="small"></code>
+                            </div>
                         </div>
                     </div>
 
@@ -140,12 +166,60 @@
             const nameWithoutExt = file.name.replace(/\.[^/.]+$/, "");
             document.getElementById('dataset_name').value = nameWithoutExt;
         }
+
+        // Preview Excel file (only for Excel files)
+        if (['xlsx', 'xls'].includes(ext)) {
+            previewExcelFile(file);
+        } else {
+            document.getElementById('excelPreview').classList.add('d-none');
+        }
+    }
+
+    // Preview Excel file
+    function previewExcelFile(file) {
+        const formData = new FormData();
+        formData.append('excel_file', file);
+
+        fetch('<?= base_url('owner/datasets/preview-excel') ?>', {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                // Show preview
+                document.getElementById('excelPreview').classList.remove('d-none');
+                
+                // Update info
+                document.getElementById('sheetCount').textContent = data.data.total_sheets;
+                document.getElementById('totalRows').textContent = data.data.total_rows.toLocaleString('id-ID');
+                
+                // Show sheet names as badges
+                const sheetList = document.getElementById('sheetList');
+                sheetList.innerHTML = data.data.sheets.map((sheet, index) => 
+                    `<span class="badge bg-primary">
+                        <i class="fas fa-table me-1"></i>${sheet}
+                        ${index === 0 ? ' (utama)' : ''}
+                    </span>`
+                ).join('');
+                
+                // Show headers
+                const headersPreview = document.getElementById('headersPreview');
+                headersPreview.textContent = data.data.headers.join(' | ');
+            } else {
+                console.error('Preview error:', data.message);
+            }
+        })
+        .catch(error => {
+            console.error('Error previewing Excel:', error);
+        });
     }
 
     // Clear file
     function clearFile() {
         document.getElementById('fileInput').value = '';
         document.getElementById('fileInfo').classList.add('d-none');
+        document.getElementById('excelPreview').classList.add('d-none');
     }
 
     // Format file size

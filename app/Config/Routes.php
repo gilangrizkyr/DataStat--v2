@@ -163,6 +163,7 @@ $routes->group('owner', ['filter' => 'owner', 'namespace' => 'App\Controllers\Ow
     $routes->group('datasets', function ($routes) {
         $routes->get('/', 'DatasetController::index');
         $routes->get('upload', 'DatasetController::upload');
+        $routes->post('preview-excel', 'DatasetController::previewExcel');
         $routes->post('store', 'DatasetController::store');
         $routes->post('process-upload', 'DatasetController::processUpload');
         $routes->get('view/(:num)', 'DatasetController::view/$1');

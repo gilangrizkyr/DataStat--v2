@@ -10,12 +10,14 @@
  * Deskripsi:
  * Library untuk membaca file Excel (.xlsx, .xls) menggunakan PhpSpreadsheet.
  * Menghandle auto-detect schema, read data, validasi, dan konversi ke array.
+ * Support untuk membaca multiple sheets.
  * 
  * Dependencies:
  * - PhpSpreadsheet (composer require phpoffice/phpspreadsheet)
  * 
  * Features:
  * - Read Excel files (xlsx, xls)
+ * - Multi-sheet support
  * - Auto-detect column headers
  * - Auto-detect data types
  * - Get schema information
@@ -41,11 +43,13 @@ class ExcelReader
     protected $totalRows = 0;
     protected $totalColumns = 0;
     protected $filePath;
+    protected $currentSheetName = '';
+    protected $availableSheets = [];
 
     /**
      * Load Excel file
      */
-    public function load($filePath)
+    public function load($filePath, $sheetName = null)
     {
         if (!file_exists($filePath)) {
             throw new \Exception("File tidak ditemukan: {$filePath}");
@@ -56,7 +60,21 @@ class ExcelReader
         try {
             // Load spreadsheet
             $this->spreadsheet = IOFactory::load($filePath);
-            $this->worksheet = $this->spreadsheet->getActiveSheet();
+            
+            // Get all available sheets
+            $this->availableSheets = [];
+            foreach ($this->spreadsheet->getWorksheetIterator() as $worksheet) {
+                $this->availableSheets[] = $worksheet->getTitle();
+            }
+            
+            // Set active sheet
+            if ($sheetName && in_array($sheetName, $this->availableSheets)) {
+                $this->worksheet = $this->spreadsheet->getSheetByName($sheetName);
+                $this->currentSheetName = $sheetName;
+            } else {
+                $this->worksheet = $this->spreadsheet->getActiveSheet();
+                $this->currentSheetName = $this->worksheet->getTitle();
+            }
 
             // Get dimensions
             $highestRow = $this->worksheet->getHighestRow();
@@ -118,6 +136,48 @@ class ExcelReader
     public function getTotalColumns()
     {
         return $this->totalColumns;
+    }
+
+    /**
+     * Get available sheets
+     */
+    public function getAvailableSheets()
+    {
+        return $this->availableSheets;
+    }
+
+    /**
+     * Get current sheet name
+     */
+    public function getCurrentSheetName()
+    {
+        return $this->currentSheetName;
+    }
+
+    /**
+     * Switch to different sheet
+     */
+    public function switchSheet($sheetName)
+    {
+        if (!in_array($sheetName, $this->availableSheets)) {
+            throw new \Exception("Sheet '{$sheetName}' tidak ditemukan");
+        }
+
+        $this->worksheet = $this->spreadsheet->getSheetByName($sheetName);
+        $this->currentSheetName = $sheetName;
+
+        // Recalculate dimensions
+        $highestRow = $this->worksheet->getHighestRow();
+        $highestColumn = $this->worksheet->getHighestColumn();
+        $highestColumnIndex = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::columnIndexFromString($highestColumn);
+
+        $this->totalRows = $highestRow - 1; // Exclude header row
+        $this->totalColumns = $highestColumnIndex;
+
+        // Re-read headers
+        $this->readHeaders();
+
+        return $this;
     }
 
     /**
@@ -299,6 +359,49 @@ class ExcelReader
     }
 
     /**
+     * Read all sheets and combine data
+     */
+    public function readAllSheets($filePath)
+    {
+        $this->load($filePath);
+        
+        $allData = [];
+        $allHeaders = [];
+        $totalRows = 0;
+        
+        foreach ($this->availableSheets as $sheetName) {
+            $this->switchSheet($sheetName);
+            
+            $sheetData = $this->getData();
+            $sheetHeaders = $this->getHeaders();
+            
+            if (!empty($sheetData)) {
+                // If this is the first sheet, set headers
+                if (empty($allHeaders)) {
+                    $allHeaders = $sheetHeaders;
+                }
+                
+                // Add sheet name to each row for identification
+                foreach ($sheetData as &$row) {
+                    $row['_sheet_name'] = $sheetName;
+                }
+                
+                $allData = array_merge($allData, $sheetData);
+                $totalRows += count($sheetData);
+            }
+        }
+        
+        return [
+            'headers' => $allHeaders,
+            'data' => $allData,
+            'total_rows' => $totalRows,
+            'total_columns' => count($allHeaders),
+            'sheets' => $this->availableSheets,
+            'file_info' => $this->getFileInfo()
+        ];
+    }
+
+    /**
      * Get data dengan original column names
      */
     public function getDataWithOriginalNames($startRow = 2, $limit = null)
@@ -397,3 +500,4 @@ class ExcelReader
         $this->close();
     }
 }
+

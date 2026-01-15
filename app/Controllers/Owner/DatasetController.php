@@ -106,6 +106,77 @@ class DatasetController extends BaseController
     }
 
     /**
+     * Preview Excel file (sebelum upload)
+     */
+    public function previewExcel()
+    {
+        if (!$this->request->isAJAX()) {
+            return $this->response->setJSON([
+                'success' => false,
+                'message' => 'Invalid request method'
+            ]);
+        }
+
+        // Cek login dan role
+        if (!session()->get('logged_in') || session()->get('role_name') !== 'owner') {
+            return $this->response->setJSON([
+                'success' => false,
+                'message' => 'Unauthorized'
+            ]);
+        }
+
+        $file = $this->request->getFile('excel_file');
+
+        if (!$file->isValid()) {
+            return $this->response->setJSON([
+                'success' => false,
+                'message' => 'File tidak valid: ' . $file->getErrorString()
+            ]);
+        }
+
+        try {
+            // Simpan file sementara untuk dibaca
+            $tempFileName = $file->getRandomName();
+            $tempPath = 'uploads/temp/';
+            
+            if (!is_dir(FCPATH . $tempPath)) {
+                mkdir(FCPATH . $tempPath, 0755, true);
+            }
+
+            $file->move(FCPATH . $tempPath, $tempFileName);
+            $fullPath = FCPATH . $tempPath . $tempFileName;
+
+            // Baca file Excel
+            $excelReader = new ExcelReader();
+            $excelReader->load($fullPath);
+
+            $sheets = $excelReader->getAvailableSheets();
+            $totalRows = $excelReader->getTotalRows();
+            $headers = $excelReader->getHeaders();
+
+            // Hapus file temporary
+            unlink($fullPath);
+
+            return $this->response->setJSON([
+                'success' => true,
+                'message' => 'File Excel valid',
+                'data' => [
+                    'sheets' => $sheets,
+                    'total_sheets' => count($sheets),
+                    'total_rows' => $totalRows,
+                    'headers' => $headers,
+                    'total_columns' => count($headers)
+                ]
+            ]);
+        } catch (\Exception $e) {
+            return $this->response->setJSON([
+                'success' => false,
+                'message' => 'Error membaca file: ' . $e->getMessage()
+            ]);
+        }
+    }
+
+    /**
      * Proses upload Excel file
      */
     public function store()
@@ -260,8 +331,8 @@ class DatasetController extends BaseController
     private function processExcelFile($datasetId, $filePath)
     {
         try {
-            // Read Excel menggunakan Library
-            $excelData = $this->excelReader->read($filePath);
+            // Read Excel menggunakan Library - sekarang membaca semua sheet
+            $excelData = $this->excelReader->readAllSheets($filePath);
 
             if (empty($excelData['data'])) {
                 throw new \Exception('File Excel kosong atau tidak valid');
